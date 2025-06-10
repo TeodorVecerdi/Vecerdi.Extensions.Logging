@@ -60,6 +60,7 @@ public sealed class UnityLogger(string categoryName) : ILogger {
         };
     }
 
+    [HideInCallstack]
     private static void DoLogging(Action logAction, Action? exceptionAction = null) {
         if (!PlayerLoopHelper.IsMainThread && Settings.LogMessagesOnMainThread && Application.isPlaying) {
             PlayerLoopHelper.UnitySynchronizationContext.Post(_ => {
@@ -77,7 +78,7 @@ public sealed class UnityLogger(string categoryName) : ILogger {
         var logLevelString = logLevel.ToString();
 
 #if !UNITY_EDITOR
-            return $"[{logLevelString}, {category}] {message}";
+        return $"[{logLevelString}, {category}] {message}";
 #else
         if (Settings.EnableColoredOutputInEditor) {
             var color = s_LogLevelColors[logLevel];
