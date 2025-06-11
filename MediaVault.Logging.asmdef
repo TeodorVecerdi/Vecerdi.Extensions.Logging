@@ -2,9 +2,9 @@
     "name": "MediaVault.Logging",
     "rootNamespace": "",
     "references": [
-        "GUID:63c24478345b4d0ba1816dc6ffed1378",
-        "GUID:a351fe2b887f4ed4e91615d6520dea97",
-        "GUID:f51ebe6a0ceec4240a699833d6309b23"
+        "MediaVault.DependencyInjection",
+        "Vecerdi.Logging.Unity",
+        "UniTask"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
