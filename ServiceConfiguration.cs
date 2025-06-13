@@ -10,9 +10,9 @@ internal static class ServiceConfiguration {
     private static void ConfigureServices() {
         ServiceManager.RegisterServices((services, configuration) => {
             services.AddLogging(builder => {
+                builder.AddConfiguration(configuration.GetSection("Logging"));
                 builder.ClearProviders();
                 builder.AddUnity();
-                builder.AddConfiguration(configuration.GetSection("Logging"));
             });
         });
     }
