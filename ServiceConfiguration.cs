@@ -1,8 +1,6 @@
 ﻿using MediaVault.DependencyInjection;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using UnityEngine;
 
 namespace MediaVault.Logging;
@@ -17,13 +15,5 @@ internal static class ServiceConfiguration {
                 builder.AddUnityLogging();
             });
         });
-    }
-
-    // TODO: Move this to the DI library
-    public static IServiceCollection ConfigureWithoutInterceptors<TOptions>(this IServiceCollection services, IConfiguration configuration) where TOptions : class {
-        services.AddOptions();
-        services.AddSingleton<IOptionsChangeTokenSource<TOptions>>(new ConfigurationChangeTokenSource<TOptions>("", configuration));
-        services.AddSingleton<IConfigureOptions<TOptions>>(new NamedConfigureFromConfigurationOptions<TOptions>("", configuration, null));
-        return services;
     }
 }
