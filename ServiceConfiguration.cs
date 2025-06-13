@@ -8,7 +8,7 @@ namespace MediaVault.Logging;
 internal static class ServiceConfiguration {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ConfigureServices() {
-        ServiceManager.ConfigureServices((services, configuration) => {
+        ServiceManager.RegisterServices((services, configuration) => {
             services.AddLogging(builder => {
                 builder.ClearProviders();
                 builder.AddUnity();
