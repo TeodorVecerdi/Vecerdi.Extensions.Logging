@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using UnityEngine;
 
-namespace MediaVault.Logging;
+namespace Vecerdi.Extensions.Logging;
 
 internal static class ServiceConfiguration {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

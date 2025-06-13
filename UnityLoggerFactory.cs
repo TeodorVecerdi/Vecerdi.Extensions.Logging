@@ -2,7 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace MediaVault.Logging;
+namespace Vecerdi.Extensions.Logging;
 
 public static class UnityLoggerFactory {
     private static IServiceProvider? s_ServiceProvider;

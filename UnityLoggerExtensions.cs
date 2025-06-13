@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace MediaVault.Logging;
+namespace Vecerdi.Extensions.Logging;
 
 public static class UnityLoggerExtensions {
     public static IServiceCollection AddUnityLogging(this IServiceCollection services, Action<UnityLoggerOptions>? configure = null) {

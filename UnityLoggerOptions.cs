@@ -1,4 +1,4 @@
-﻿namespace MediaVault.Logging;
+﻿namespace Vecerdi.Extensions.Logging;
 
 public sealed class UnityLoggerOptions {
     /// <summary>

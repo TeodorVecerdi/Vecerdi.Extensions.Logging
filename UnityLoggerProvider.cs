@@ -2,7 +2,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace MediaVault.Logging;
+namespace Vecerdi.Extensions.Logging;
 
 public sealed class UnityLoggerProvider : ILoggerProvider {
     private readonly IOptionsMonitor<LoggerFilterOptions> m_FilterOptions;

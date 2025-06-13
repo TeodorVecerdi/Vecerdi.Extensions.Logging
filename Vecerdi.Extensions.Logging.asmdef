@@ -1,5 +1,5 @@
 {
-    "name": "MediaVault.Logging",
+    "name": "Vecerdi.Extensions.Logging",
     "rootNamespace": "",
     "references": [
         "Vecerdi.Extensions.DependencyInjection"

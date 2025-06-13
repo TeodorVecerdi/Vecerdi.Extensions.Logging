@@ -2,7 +2,7 @@
 using UnityEngine;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
-namespace MediaVault.Logging;
+namespace Vecerdi.Extensions.Logging;
 
 public sealed class UnityLogger(string categoryName, Func<LoggerFilterOptions> getCurrentFilterConfig, Func<UnityLoggerOptions> getCurrentUnityConfig) : ILogger {
     private string m_TransformedCategoryName = getCurrentUnityConfig().ProcessCategoryName(categoryName);
