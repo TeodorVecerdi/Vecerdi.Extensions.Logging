@@ -1,21 +1,24 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Vecerdi.Logging.Unity;
 
 namespace MediaVault.Logging;
 
 public static class UnityLoggerExtensions {
-    public static ILoggingBuilder AddUnity(this ILoggingBuilder builder) {
-        var settings = LoggingSettings.GetOrCreateSettings();
-        var logLevel = (LogLevel)settings.GlobalLogLevel;
+    public static IServiceCollection AddUnityLogging(this IServiceCollection services, Action<UnityLoggerOptions>? configure = null) {
+        services.AddSingleton<ILoggerProvider, UnityLoggerProvider>();
+        if (configure != null) {
+            services.Configure(configure);
+        }
 
-        builder.Services.AddSingleton<ILoggerProvider, UnityLoggerProvider>();
-        builder.SetMinimumLevel(logLevel);
-        return builder;
+        return services;
     }
-    public static ILoggingBuilder AddUnity(this ILoggingBuilder builder, LogLevel logLevel) {
+
+    public static ILoggingBuilder AddUnityLogging(this ILoggingBuilder builder, Action<UnityLoggerOptions>? configure = null) {
         builder.Services.AddSingleton<ILoggerProvider, UnityLoggerProvider>();
-        builder.SetMinimumLevel(logLevel);
+        if (configure != null) {
+            builder.Services.Configure(configure);
+        }
+
         return builder;
     }
 }

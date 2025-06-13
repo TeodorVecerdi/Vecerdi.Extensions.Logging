@@ -1,18 +1,13 @@
-﻿using System.Diagnostics.CodeAnalysis;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using UnityEngine;
-using Vecerdi.Logging.Unity;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace MediaVault.Logging;
 
-public sealed class UnityLogger(string categoryName) : ILogger {
-    private readonly string m_TransformedCategoryName = Settings.TransformCategoryName(categoryName);
+public sealed class UnityLogger(string categoryName, Func<LoggerFilterOptions> getCurrentFilterConfig, Func<UnityLoggerOptions> getCurrentUnityConfig) : ILogger {
+    private string m_TransformedCategoryName = getCurrentUnityConfig().ProcessCategoryName(categoryName);
+    private LogLevel? m_CachedLevel;
 
-    [field: AllowNull, MaybeNull]
-    private static LoggingSettings Settings => field ??= LoggingSettings.GetOrCreateSettings();
-
-#if UNITY_EDITOR
     private static readonly Dictionary<LogLevel, string> s_LogLevelColors = new() {
         { LogLevel.Trace, "#A8A8A8" },
         { LogLevel.Debug, "#C7C7C7" },
@@ -21,17 +16,52 @@ public sealed class UnityLogger(string categoryName) : ILogger {
         { LogLevel.Error, "#FF465F" },
         { LogLevel.Critical, "#E5558C" },
     };
-#endif
 
     public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
 
     public bool IsEnabled(LogLevel logLevel) {
-        var unityLogLevel = (Vecerdi.Logging.LogLevel)logLevel;
-        if (Settings.LogCategoriesByName.TryGetValue(categoryName, out var logCategory)) {
-            return unityLogLevel >= logCategory.LogLevel;
+        if (logLevel == LogLevel.None)
+            return false;
+        return logLevel >= GetEffectiveLogLevel();
+    }
+
+    private LogLevel GetEffectiveLogLevel() {
+        if (m_CachedLevel.HasValue)
+            return m_CachedLevel.Value;
+
+        var filterConfig = getCurrentFilterConfig();
+        var effectiveLevel = GetEffectiveLogLevel(filterConfig, categoryName);
+        m_CachedLevel = effectiveLevel;
+        return effectiveLevel;
+    }
+
+    private static LogLevel GetEffectiveLogLevel(LoggerFilterOptions config, string categoryName) {
+        // Find the most specific matching rule
+        LoggerFilterRule? bestMatch = null;
+        var bestMatchLength = -1;
+
+        foreach (var rule in config.Rules) {
+            // Skip rules that don't apply to this provider
+            if (rule.ProviderName != null && rule.ProviderName != typeof(UnityLoggerProvider).FullName && rule.ProviderName != nameof(UnityLoggerProvider))
+                continue;
+
+            // Check if category matches
+            if (rule.CategoryName == null || categoryName.StartsWith(rule.CategoryName)) {
+                var matchLength = rule.CategoryName?.Length ?? 0;
+                if (matchLength > bestMatchLength) {
+                    bestMatch = rule;
+                    bestMatchLength = matchLength;
+                }
+            }
         }
 
-        return true;
+        // Return the matched rule's level, or fall back to MinLevel
+        return bestMatch?.LogLevel ?? config.MinLevel;
+    }
+
+    internal void OnConfigurationChanged() {
+        m_CachedLevel = null;
+        m_TransformedCategoryName = getCurrentUnityConfig().ProcessCategoryName(categoryName);
     }
 
     [HideInCallstack]
@@ -43,7 +73,10 @@ public sealed class UnityLogger(string categoryName) : ILogger {
         var logMessage = GetLogMessage(message, m_TransformedCategoryName, logLevel);
 
         if (exception != null) {
-            DoLogging(() => Debug.LogError(logMessage), () => Debug.LogException(exception));
+            DoLogging(() => {
+                Debug.LogError(logMessage);
+                Debug.LogException(exception);
+            });
         } else {
             var logMethod = GetUnityLogMethod(logLevel);
             DoLogging(() => logMethod(logMessage));
@@ -61,32 +94,19 @@ public sealed class UnityLogger(string categoryName) : ILogger {
     }
 
     [HideInCallstack]
-    private static void DoLogging(Action logAction, Action? exceptionAction = null) {
-        if (!PlayerLoopHelper.IsMainThread && Settings.LogMessagesOnMainThread && Application.isPlaying) {
-            PlayerLoopHelper.UnitySynchronizationContext.Post(_ => {
-                logAction();
-                exceptionAction?.Invoke();
-            }, null);
-            return;
-        }
-
+    private static void DoLogging(Action logAction) {
         logAction();
-        exceptionAction?.Invoke();
     }
 
-    private static string GetLogMessage(string message, string category, LogLevel logLevel) {
+    private string GetLogMessage(string message, string category, LogLevel logLevel) {
         var logLevelString = logLevel.ToString();
 
-#if !UNITY_EDITOR
-        return $"[{logLevelString}, {category}] {message}";
-#else
-        if (Settings.EnableColoredOutputInEditor) {
-            var color = s_LogLevelColors[logLevel];
-            return $"<b><color={color}>[{logLevelString}, {category}]</color></b> {message}";
+        if (!Application.isEditor || !getCurrentUnityConfig().EnableColoredOutput) {
+            return $"[{logLevelString}, {category}] {message}";
         }
 
-        return $"[{logLevelString}, {category}] {message}";
-#endif
+        var color = s_LogLevelColors[logLevel];
+        return $"<b><color={color}>[{logLevelString}, {category}]</color></b> {message}";
     }
 
     private sealed class NullScope : IDisposable {
