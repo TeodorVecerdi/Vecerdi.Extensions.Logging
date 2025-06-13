@@ -2,7 +2,7 @@
     "name": "MediaVault.Logging",
     "rootNamespace": "",
     "references": [
-        "MediaVault.DependencyInjection"
+        "Vecerdi.Extensions.DependencyInjection"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

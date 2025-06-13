@@ -1,4 +1,4 @@
-﻿using MediaVault.DependencyInjection;
+﻿using Vecerdi.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using UnityEngine;
