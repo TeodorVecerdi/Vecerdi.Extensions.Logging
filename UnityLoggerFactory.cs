@@ -8,7 +8,7 @@ public static class UnityLoggerFactory {
     private static IServiceProvider? s_ServiceProvider;
     private static readonly ConcurrentDictionary<string, ILogger> s_LoggerCache = new();
 
-    public static void Initialize(IServiceProvider serviceProvider) {
+    public static void Initialize(IServiceProvider? serviceProvider) {
         s_ServiceProvider = serviceProvider;
     }
 
