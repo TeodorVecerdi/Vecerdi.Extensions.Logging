@@ -1,7 +1,7 @@
-﻿using Vecerdi.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using UnityEngine;
+using Vecerdi.Extensions.DependencyInjection;
 
 namespace Vecerdi.Extensions.Logging;
 
