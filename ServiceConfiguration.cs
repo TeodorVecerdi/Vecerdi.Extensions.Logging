@@ -9,7 +9,7 @@ internal static class ServiceConfiguration {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ConfigureServices() {
         ServiceManager.RegisterServices((services, configuration) => {
-            services.ConfigureWithoutInterceptors<UnityLoggerOptions>(configuration.GetSection("UnityLogger"));
+            services.Configure<UnityLoggerOptions>(configuration.GetSection("UnityLogger"));
             services.AddLogging(builder => {
                 builder.AddConfiguration(configuration.GetSection("Logging"));
                 builder.AddUnityLogging();
