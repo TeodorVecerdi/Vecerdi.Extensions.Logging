@@ -9,7 +9,7 @@ public sealed class UnityLoggerOptions {
     /// <summary>
     /// Whether to trim namespaces from category names
     /// </summary>
-    public bool TrimNamespaces { get; set; } = false;
+    public bool TrimNamespaces { get; set; } = true;
 
     /// <summary>
     /// Number of namespace segments to keep when trimming (0 = class name only, 1 = last namespace and class, etc.)
@@ -25,6 +25,16 @@ public sealed class UnityLoggerOptions {
     public string ProcessCategoryName(string categoryName) {
         if (!TrimNamespaces || NamespaceSegmentsToKeep < 0)
             return categoryName;
+
+        if (TrimNamespaces && NamespaceSegmentsToKeep == 0) {
+            // Just return the class name
+            var lastDotIndex = categoryName.LastIndexOf('.');
+            if (lastDotIndex >= 0 && lastDotIndex < categoryName.Length - 1) {
+                return categoryName[(lastDotIndex + 1)..];
+            }
+
+            return categoryName; // No dot found, return as is
+        }
 
         // Apply segment limiting
         var segments = categoryName.Split('.');
