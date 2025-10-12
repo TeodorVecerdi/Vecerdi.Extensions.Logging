@@ -4,12 +4,13 @@ using Microsoft.Extensions.Options;
 
 namespace Vecerdi.Extensions.Logging;
 
-public sealed class UnityLoggerProvider : ILoggerProvider {
+public sealed class UnityLoggerProvider : ILoggerProvider, ISupportExternalScope {
     private readonly IOptionsMonitor<LoggerFilterOptions> m_FilterOptions;
     private readonly IOptionsMonitor<UnityLoggerOptions> m_UnityOptions;
     private readonly IDisposable? m_FilterOptionsReloadToken;
     private readonly IDisposable? m_UnityOptionsReloadToken;
     private readonly ConcurrentDictionary<string, UnityLogger> m_Loggers = new();
+    private IExternalScopeProvider? m_ScopeProvider;
 
     public UnityLoggerProvider(IOptionsMonitor<LoggerFilterOptions> filterOptions, IOptionsMonitor<UnityLoggerOptions> unityOptions) {
         m_FilterOptions = filterOptions;
@@ -19,7 +20,18 @@ public sealed class UnityLoggerProvider : ILoggerProvider {
     }
 
     public ILogger CreateLogger(string categoryName) {
-        return m_Loggers.GetOrAdd(categoryName, static (name, @this) => new UnityLogger(name, @this.GetCurrentFilterConfig, @this.GetCurrentUnityConfig), this);
+        return m_Loggers.GetOrAdd(categoryName, static (name, @this) => {
+            var logger = new UnityLogger(name, @this.GetCurrentFilterConfig, @this.GetCurrentUnityConfig);
+            if (@this.m_ScopeProvider != null) logger.SetScopeProvider(@this.m_ScopeProvider);
+            return logger;
+        }, this);
+    }
+
+    public void SetScopeProvider(IExternalScopeProvider scopeProvider) {
+        m_ScopeProvider = scopeProvider;
+        foreach (var logger in m_Loggers.Values) {
+            logger.SetScopeProvider(scopeProvider);
+        }
     }
 
     private LoggerFilterOptions GetCurrentFilterConfig() => m_FilterOptions.CurrentValue;

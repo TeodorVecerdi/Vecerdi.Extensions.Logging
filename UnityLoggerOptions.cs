@@ -18,6 +18,11 @@ public sealed class UnityLoggerOptions {
     public int NamespaceSegmentsToKeep { get; set; } = 0;
 
     /// <summary>
+    /// Whether to include logging scopes in the Unity output.
+    /// </summary>
+    public bool IncludeScopes { get; set; } = false;
+
+    /// <summary>
     /// Processes the category name based on namespace trimming options and the number of namespace segments to keep.
     /// </summary>
     /// <param name="categoryName">The fully qualified name of the category to be processed.</param>

@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System.Text;
+using Microsoft.Extensions.Logging;
 using UnityEngine;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
@@ -7,6 +8,7 @@ namespace Vecerdi.Extensions.Logging;
 public sealed class UnityLogger(string categoryName, Func<LoggerFilterOptions> getCurrentFilterConfig, Func<UnityLoggerOptions> getCurrentUnityConfig) : ILogger {
     private string m_TransformedCategoryName = getCurrentUnityConfig().ProcessCategoryName(categoryName);
     private LogLevel? m_CachedLevel;
+    private IExternalScopeProvider? m_ScopeProvider;
 
     private static readonly Dictionary<LogLevel, string> s_LogLevelColors = new() {
         { LogLevel.Trace, "#A8A8A8" },
@@ -17,7 +19,9 @@ public sealed class UnityLogger(string categoryName, Func<LoggerFilterOptions> g
         { LogLevel.Critical, "#E5558C" },
     };
 
-    public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+    public IDisposable BeginScope<TState>(TState state) where TState : notnull => m_ScopeProvider?.Push(state) ?? NullScope.Instance;
+
+    public void SetScopeProvider(IExternalScopeProvider scopeProvider) => m_ScopeProvider = scopeProvider;
 
     public bool IsEnabled(LogLevel logLevel) {
         if (logLevel == LogLevel.None)
@@ -69,18 +73,56 @@ public sealed class UnityLogger(string categoryName, Func<LoggerFilterOptions> g
         if (!IsEnabled(logLevel))
             return;
 
+        var options = getCurrentUnityConfig();
         var message = formatter(state, exception);
-        var logMessage = GetLogMessage(message, m_TransformedCategoryName, logLevel);
+
+        string? scopesText = null;
+        if (options.IncludeScopes && m_ScopeProvider != null) {
+            var sb = new StringBuilder();
+            m_ScopeProvider.ForEachScope((scope, builder) => {
+                if (scope is IEnumerable<KeyValuePair<string, object?>> kvps) {
+                    foreach (var kv in kvps) {
+                        AppendScopePair(builder, kv.Key, kv.Value);
+                    }
+                } else if (scope is IEnumerable<KeyValuePair<string, object>> kvpsNonNull) {
+                    foreach (var kv in kvpsNonNull) {
+                        AppendScopePair(builder, kv.Key, kv.Value);
+                    }
+                } else if (scope is IReadOnlyList<KeyValuePair<string, object?>> listKv) {
+                    foreach (var kv in listKv) {
+                        AppendScopePair(builder, kv.Key, kv.Value);
+                    }
+                } else {
+                    AppendScopeValue(builder, scope);
+                }
+            }, sb);
+
+            if (sb.Length > 0) {
+                sb.Insert(0, '[');
+                sb.Append(']');
+                scopesText = sb.ToString();
+            }
+        }
+
+        var logMessage = GetLogMessage(message, m_TransformedCategoryName, logLevel, scopesText);
 
         if (exception != null) {
-            DoLogging(() => {
-                Debug.LogError(logMessage);
-                Debug.LogException(exception);
-            });
+            DoLogging(() => Debug.LogError(logMessage + "\n" + exception));
         } else {
             var logMethod = GetUnityLogMethod(logLevel);
-            DoLogging(() => logMethod(logMessage));
+            DoLogging(() => { logMethod(logMessage); });
         }
+    }
+
+    private static void AppendScopePair(StringBuilder builder, string key, object? value) {
+        if (builder.Length > 0) builder.Append(' ');
+        builder.Append(key).Append('=');
+        builder.Append(value is null ? "<null>" : value);
+    }
+
+    private static void AppendScopeValue(StringBuilder builder, object? value) {
+        if (builder.Length > 0) builder.Append(' ');
+        builder.Append(value is null ? "<null>" : value);
     }
 
     private static Action<string> GetUnityLogMethod(LogLevel logLevel) {
@@ -98,15 +140,16 @@ public sealed class UnityLogger(string categoryName, Func<LoggerFilterOptions> g
         logAction();
     }
 
-    private string GetLogMessage(string message, string category, LogLevel logLevel) {
+    private string GetLogMessage(string message, string category, LogLevel logLevel, string? scopes = null) {
         var logLevelString = logLevel.ToString();
+        var header = $"[{logLevelString}, {category}]" + (scopes != null ? $" {scopes}" : string.Empty);
 
         if (!Application.isEditor || !getCurrentUnityConfig().EnableColoredOutput) {
-            return $"[{logLevelString}, {category}] {message}";
+            return $"{header} {message}";
         }
 
         var color = s_LogLevelColors[logLevel];
-        return $"<b><color={color}>[{logLevelString}, {category}]</color></b> {message}";
+        return $"<b><color={color}>{header}</color></b> {message}";
     }
 
     private sealed class NullScope : IDisposable {
