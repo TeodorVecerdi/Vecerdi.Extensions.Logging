@@ -106,11 +106,14 @@ public sealed class UnityLogger(string categoryName, Func<LoggerFilterOptions> g
 
         var logMessage = GetLogMessage(message, m_TransformedCategoryName, logLevel, scopesText);
 
-        if (exception != null) {
-            DoLogging(() => Debug.LogError(logMessage + "\n" + exception));
-        } else {
+        if (exception is null || logLevel < LogLevel.Error) {
             var logMethod = GetUnityLogMethod(logLevel);
-            DoLogging(() => { logMethod(logMessage); });
+            DoLogging(() => logMethod(exception is null ? logMessage : $"{logMessage}\n{exception}"));
+        } else {
+            DoLogging(() => {
+                Debug.LogError($"{logMessage}\n[See exception in the next message]");
+                Debug.LogException(exception);
+            });
         }
     }
 
