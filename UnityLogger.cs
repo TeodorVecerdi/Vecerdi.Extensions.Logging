@@ -39,7 +39,7 @@ public sealed class UnityLogger(string categoryName, Func<LoggerFilterOptions> g
         return effectiveLevel;
     }
 
-    private static LogLevel GetEffectiveLogLevel(LoggerFilterOptions config, string categoryName) {
+    internal static LogLevel GetEffectiveLogLevel(LoggerFilterOptions config, string categoryName) {
         // Find the most specific matching rule
         LoggerFilterRule? bestMatch = null;
         var bestMatchLength = -1;
