@@ -1,54 +1,55 @@
-﻿namespace Vecerdi.Extensions.Logging;
+namespace Vecerdi.Extensions.Logging;
 
+/// <summary>
+/// Which log levels ask Unity to capture a stack trace. Capturing is the expensive part of a
+/// <c>Debug.Log</c> call, so turning it off for chatty levels makes logging cheap without touching
+/// the project-wide <c>Application.SetStackTraceLogType</c> setting.
+/// </summary>
+public enum StackTraceMode {
+    /// <summary>Every entry gets a stack trace (Unity's own default).</summary>
+    Always,
+
+    /// <summary>Warnings, errors and critical entries get a stack trace; trace/debug/information do not.</summary>
+    WarningsAndErrors,
+
+    /// <summary>Only errors and critical entries get a stack trace.</summary>
+    ErrorsOnly,
+
+    /// <summary>No entry gets a stack trace. Exceptions still carry their own trace in the message text.</summary>
+    Never,
+}
+
+/// <summary>Output options for the Unity console provider. Bound from <c>Logging:Unity</c> when configuration is used.</summary>
 public sealed class UnityLoggerOptions {
-    /// <summary>
-    /// Determines whether to enable colored output in logging.
-    /// </summary>
+    /// <summary>Colour the <c>[Level, Category]</c> header with rich text. Editor only; players always get plain text.</summary>
     public bool EnableColoredOutput { get; set; } = true;
 
     /// <summary>
-    /// Whether to trim namespaces from category names
+    /// How many trailing segments of the category name to show in the header: <c>1</c> keeps just the
+    /// type name (<c>Mixer</c>), <c>2</c> keeps <c>Audio.Mixer</c>, and so on. <c>null</c> shows the
+    /// full category. Values below 1 are treated as 1.
     /// </summary>
-    public bool TrimNamespaces { get; set; } = true;
+    public int? CategorySegments { get; set; } = 1;
 
-    /// <summary>
-    /// Number of namespace segments to keep when trimming (0 = class name only, 1 = last namespace and class, etc.)
-    /// Only used when TrimNamespaces is true
-    /// </summary>
-    public int NamespaceSegmentsToKeep { get; set; } = 0;
+    /// <summary>Render the active logging scopes after the header, as <c>[key=value ...]</c>.</summary>
+    public bool IncludeScopes { get; set; }
 
-    /// <summary>
-    /// Whether to include logging scopes in the Unity output.
-    /// </summary>
-    public bool IncludeScopes { get; set; } = false;
+    /// <summary>Which levels ask Unity to capture a stack trace. See <see cref="StackTraceMode"/>.</summary>
+    public StackTraceMode StackTraces { get; set; } = StackTraceMode.Always;
 
-    /// <summary>
-    /// Processes the category name based on namespace trimming options and the number of namespace segments to keep.
-    /// </summary>
-    /// <param name="categoryName">The fully qualified name of the category to be processed.</param>
-    /// <returns>A processed category name based on the trimming configuration, or the original category name if trimming is disabled.</returns>
-    public string ProcessCategoryName(string categoryName) {
-        if (!TrimNamespaces || NamespaceSegmentsToKeep < 0)
+    /// <summary>Applies <see cref="CategorySegments"/> to a category name.</summary>
+    internal string FormatCategory(string categoryName) {
+        if (CategorySegments is not { } segments) {
             return categoryName;
-
-        if (TrimNamespaces && NamespaceSegmentsToKeep == 0) {
-            // Just return the class name
-            var lastDotIndex = categoryName.LastIndexOf('.');
-            if (lastDotIndex >= 0 && lastDotIndex < categoryName.Length - 1) {
-                return categoryName[(lastDotIndex + 1)..];
-            }
-
-            return categoryName; // No dot found, return as is
         }
 
-        // Apply segment limiting
-        var segments = categoryName.Split('.');
-        if (segments.Length > NamespaceSegmentsToKeep + 1) {
-            var segmentsToTake = Math.Max(1, NamespaceSegmentsToKeep + 1);
-            var startIndex = segments.Length - segmentsToTake;
-            categoryName = string.Join(".", segments.Skip(startIndex));
+        segments = Math.Max(1, segments);
+        var parts = categoryName.Split('.');
+        if (parts.Length <= segments) {
+            return categoryName;
         }
 
-        return categoryName;
+        var trimmed = string.Join(".", parts, parts.Length - segments, segments);
+        return trimmed.Length == 0 ? categoryName : trimmed;
     }
 }

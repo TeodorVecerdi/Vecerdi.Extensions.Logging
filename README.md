@@ -3,32 +3,38 @@
 A `Microsoft.Extensions.Logging` provider for Unity. Anything that takes an `ILogger` — your own
 services, or the Microsoft.Extensions / third-party libraries you pull into a Unity project — writes
 to the Unity console with the standard category filtering, options, and scopes you get on .NET, and
-the output stays readable: a coloured `[Level, Category]` header in the editor, exceptions handed to
-`Debug.LogException` so the console keeps their stack trace, and the logger frames hidden from the
-call stack.
+the output stays readable: a coloured `[Level, Category]` header in the editor, one console entry per
+log call, exceptions kept in one piece, and the logger's own frames hidden from the call stack.
 
 ```
 [Information, NavigationManager] Navigated to /movies/the-thing
 [Warning, AssetManager] [key=poster:1234] Load took 1.8s
 [Error, DatabaseContext] Migration V72 failed
-[See exception in the next message]
+System.IO.IOException: The database is locked
+   at ...
 ```
 
 ## Features
 
 - **Drop-in `ILoggerProvider`.** Registers through the normal `ILoggingBuilder`, so `ILogger<T>`
-  constructor injection, `LoggerMessage` source generators, and category-based filtering all work as
-  they do on .NET. No dependency on any particular container or bootstrap.
-- **Static access for code outside the container.** `UnityLoggerFactory.CreateLogger<T>()` works
-  from editor scripts, static classes, and before any container exists. Loggers it hands out
-  forward to the real `ILoggerFactory` as soon as one is provided, so they are safe to keep in
-  static fields.
-- **Readable console output.** Level-coloured header in the editor (plain text in players),
-  namespaces trimmed from category names, optional scopes rendered inline as `[key=value ...]`.
-- **Exceptions preserved.** Errors and above with an exception log the message, then the exception
-  itself via `Debug.LogException`, so the console shows the real stack rather than a flattened string.
-- **Live reconfiguration.** Level rules and options are read through `IOptionsMonitor`, so a
-  configuration reload takes effect without recreating loggers.
+  constructor injection, `LoggerMessage` source generators, and category filtering all work as they
+  do on .NET. Filtering is left to `LoggerFactory`; the provider only formats and writes.
+- **Configured like the built-in providers.** The provider alias is `Unity`, so level rules and output
+  options both live under `Logging:Unity`, exactly the way `Logging:Console` works.
+- **Static access for code outside the container.** `UnityLoggers.For<T>()` works from editor
+  scripts, static classes, and before any container exists, and forwards to the real
+  `ILoggerFactory` as soon as one is handed over, so the result is safe to keep in a static field.
+- **Stack traces on your terms.** Capturing a stack trace is the expensive part of a Unity log call.
+  `StackTraces` limits capture to warnings and errors, errors only, or nothing, per provider, without
+  touching the project-wide setting.
+- **Exceptions in one entry.** An error with an exception is a single console entry classified as an
+  exception, carrying the header, the message, and the exception's own text and trace.
+- **Console context.** Push a `UnityEngine.Object` as a scope and the entries logged inside it are
+  linked to it, so clicking the entry selects the object.
+- **Readable output.** Level-coloured header in the editor (plain text in players), category names
+  trimmed to the last segments, optional scopes rendered inline as `[key=value ...]`.
+- **Live reconfiguration.** Options are read through `IOptionsMonitor`, so a configuration reload
+  takes effect without recreating loggers.
 
 ## Requirements
 
@@ -38,8 +44,8 @@ call stack.
     - **Unity 7 or later**, which runs on CoreCLR and ships the latest C# features out of the box
 - The following NuGet packages (e.g. via NuGetForUnity):
     - Microsoft.Extensions.Logging
+    - Microsoft.Extensions.Logging.Configuration
     - Microsoft.Extensions.Options
-    - Microsoft.Extensions.Configuration.Abstractions (for the configuration-bound overload)
 
 ## Installation
 
@@ -80,13 +86,13 @@ services.AddLogging(builder => {
 var provider = services.BuildServiceProvider();
 ```
 
-To drive both the level filtering and the output options from configuration, use the
-`IConfiguration` overload together with the standard `AddConfiguration`:
+With configuration attached, both the level rules and the output options come from the `Logging`
+section, and the options follow reloads:
 
 ```csharp
 services.AddLogging(builder => {
     builder.AddConfiguration(configuration.GetSection("Logging"));
-    builder.AddUnityLogging(configuration.GetSection("UnityLogger"));
+    builder.AddUnityLogging();
 });
 ```
 
@@ -102,20 +108,29 @@ public sealed class MovieImporter(ILogger<MovieImporter> logger) {
 
 ### Static and editor code
 
-For static classes, editor scripts, or anything that runs before the container is built, use the
-factory:
+For static classes, editor scripts, or anything that runs before the container is built:
 
 ```csharp
-private static readonly ILogger s_Logger = UnityLoggerFactory.CreateLogger<CompilationMenuItems>();
+private static readonly ILogger s_Logger = UnityLoggers.For<CompilationMenuItems>();
 ```
 
-These loggers start on a built-in fallback (Information and above, trimmed names, colours). Hand the
-factory your container once it exists and every logger created so far switches over on its next
-use; pass `null` to go back to the fallback, e.g. when leaving play mode:
+These loggers start on a built-in factory (Unity console, Information and above). Hand over your
+container's factory once it exists and every logger obtained so far switches on its next use; pass
+`null` to go back to the fallback, e.g. when leaving play mode with domain reload disabled:
 
 ```csharp
-UnityLoggerFactory.Initialize(provider);   // after BuildServiceProvider
-UnityLoggerFactory.Initialize(null);       // on teardown
+UnityLoggers.Initialize(provider.GetRequiredService<ILoggerFactory>());   // after the container is built
+UnityLoggers.Initialize(null);                                             // on teardown
+```
+
+### Linking entries to a scene object
+
+Push the object as a scope. Every entry logged while the scope is open gets it as its console context:
+
+```csharp
+using (logger.BeginScope(gameObject)) {
+    logger.LogWarning("Missing audio source");   // click the entry to select gameObject
+}
 ```
 
 ### Example: with Vecerdi.Extensions.DependencyInjection
@@ -137,11 +152,11 @@ internal static class LoggingConfiguration {
         ServiceManager.RegisterServices((services, configuration) => {
             services.AddLogging(builder => {
                 builder.AddConfiguration(configuration.GetSection("Logging"));
-                builder.AddUnityLogging(configuration.GetSection("UnityLogger"));
+                builder.AddUnityLogging();
             });
         });
 
-        ServiceManager.RegisterPostInitializationAction(UnityLoggerFactory.Initialize);
+        ServiceManager.RegisterPostInitializationAction(provider => UnityLoggers.Initialize(provider.GetRequiredService<ILoggerFactory>()));
     }
 }
 ```
@@ -156,44 +171,46 @@ public sealed class PlayerHud : BaseMonoBehaviour {
 
 ## Configuration
 
-Filtering uses the standard `Logging` section; the output is shaped by `UnityLogger` (or by the
-`Action<UnityLoggerOptions>` overload when you prefer code):
+Everything lives under the standard `Logging` section. Rules under `LogLevel` apply to all providers;
+rules and options under `Unity` apply to this one:
 
 ```json
 {
     "Logging": {
         "LogLevel": {
             "Default": "Information",
-            "System.Net.Http.HttpClient": "Warning",
-            "MyGame.Audio": "Debug"
+            "System.Net.Http.HttpClient": "Warning"
+        },
+        "Unity": {
+            "LogLevel": {
+                "MyGame.Audio": "Debug"
+            },
+            "EnableColoredOutput": true,
+            "CategorySegments": 1,
+            "IncludeScopes": false,
+            "StackTraces": "Always"
         }
-    },
-    "UnityLogger": {
-        "EnableColoredOutput": true,
-        "TrimNamespaces": true,
-        "NamespaceSegmentsToKeep": 0,
-        "IncludeScopes": false
     }
 }
 ```
 
-| Option                    | Default | Effect                                                                                            |
-|---------------------------|---------|---------------------------------------------------------------------------------------------------|
-| `EnableColoredOutput`     | `true`  | Rich-text colours for the header. Editor only; players always get plain text.                     |
-| `TrimNamespaces`          | `true`  | Shorten `My.Game.Audio.Mixer` in the header.                                                      |
-| `NamespaceSegmentsToKeep` | `0`     | With trimming on: `0` keeps `Mixer`, `1` keeps `Audio.Mixer`, and so on.                          |
-| `IncludeScopes`           | `false` | Render active `BeginScope` state after the header, e.g. `[RequestId=42 User=teodor]`.             |
+| Option                | Default  | Effect                                                                                                              |
+|-----------------------|----------|---------------------------------------------------------------------------------------------------------------------|
+| `EnableColoredOutput` | `true`   | Rich-text colours for the header. Editor only; players always get plain text.                                       |
+| `CategorySegments`    | `1`      | Trailing segments of the category to show: `1` gives `Mixer`, `2` gives `Audio.Mixer`, `null` the full name.        |
+| `IncludeScopes`       | `false`  | Render active `BeginScope` state after the header, e.g. `[RequestId=42 User=teodor]`.                               |
+| `StackTraces`         | `Always` | Which levels ask Unity for a stack trace: `Always`, `WarningsAndErrors`, `ErrorsOnly`, `Never`.                     |
 
-Level rules follow `Microsoft.Extensions.Logging` semantics: the longest matching category prefix wins,
-provider-specific rules may name `UnityLoggerProvider`, and `Default`/`MinLevel` is the fallback.
+`StackTraces` is worth lowering in player builds once the capture cost matters; a per-environment
+configuration override is the natural place for that.
 
 ## How levels map to the console
 
-| `LogLevel`                         | Unity call                                         |
-|------------------------------------|----------------------------------------------------|
-| Trace, Debug, Information          | `Debug.Log`                                        |
-| Warning                            | `Debug.LogWarning`                                 |
-| Error, Critical                    | `Debug.LogError`, plus `Debug.LogException` when an exception is attached |
+| `LogLevel`                        | Unity entry                                                                                  |
+|-----------------------------------|----------------------------------------------------------------------------------------------|
+| Trace, Debug, Information         | `Log`                                                                                        |
+| Warning                           | `Warning`, with the exception text appended when one is attached                             |
+| Error, Critical                   | `Error`; with an exception attached, a single `Exception` entry that includes its text       |
 
 ## License
 

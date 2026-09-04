@@ -1,28 +1,36 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Vecerdi.Extensions.Logging;
 
+/// <summary>
+/// <see cref="ILoggerProvider"/> for the Unity console. Aliased <c>Unity</c>, so provider-specific level
+/// rules and the output options both live under <c>Logging:Unity</c> in configuration.
+/// </summary>
+[ProviderAlias("Unity")]
 public sealed class UnityLoggerProvider : ILoggerProvider, ISupportExternalScope {
-    private readonly IOptionsMonitor<LoggerFilterOptions> m_FilterOptions;
-    private readonly IOptionsMonitor<UnityLoggerOptions> m_UnityOptions;
-    private readonly IDisposable? m_FilterOptionsReloadToken;
-    private readonly IDisposable? m_UnityOptionsReloadToken;
+    private readonly IOptionsMonitor<UnityLoggerOptions> m_Options;
+    private readonly IDisposable? m_OptionsReloadToken;
     private readonly ConcurrentDictionary<string, UnityLogger> m_Loggers = new();
     private IExternalScopeProvider? m_ScopeProvider;
 
-    public UnityLoggerProvider(IOptionsMonitor<LoggerFilterOptions> filterOptions, IOptionsMonitor<UnityLoggerOptions> unityOptions) {
-        m_FilterOptions = filterOptions;
-        m_UnityOptions = unityOptions;
-        m_FilterOptionsReloadToken = m_FilterOptions.OnChange(OnConfigurationChanged);
-        m_UnityOptionsReloadToken = m_UnityOptions.OnChange(OnConfigurationChanged);
+    public UnityLoggerProvider(IOptionsMonitor<UnityLoggerOptions> options) {
+        m_Options = options;
+        m_OptionsReloadToken = options.OnChange(_ => {
+            foreach (var logger in m_Loggers.Values) {
+                logger.OnConfigurationChanged();
+            }
+        });
     }
 
     public ILogger CreateLogger(string categoryName) {
-        return m_Loggers.GetOrAdd(categoryName, static (name, @this) => {
-            var logger = new UnityLogger(name, @this.GetCurrentFilterConfig, @this.GetCurrentUnityConfig);
-            if (@this.m_ScopeProvider != null) logger.SetScopeProvider(@this.m_ScopeProvider);
+        return m_Loggers.GetOrAdd(categoryName, static (name, provider) => {
+            var logger = new UnityLogger(name, provider.GetOptions);
+            if (provider.m_ScopeProvider is { } scopeProvider) {
+                logger.SetScopeProvider(scopeProvider);
+            }
+
             return logger;
         }, this);
     }
@@ -34,18 +42,10 @@ public sealed class UnityLoggerProvider : ILoggerProvider, ISupportExternalScope
         }
     }
 
-    private LoggerFilterOptions GetCurrentFilterConfig() => m_FilterOptions.CurrentValue;
-    private UnityLoggerOptions GetCurrentUnityConfig() => m_UnityOptions.CurrentValue;
-
-    private void OnConfigurationChanged<T>(T options) {
-        foreach (var logger in m_Loggers.Values) {
-            logger.OnConfigurationChanged();
-        }
-    }
+    private UnityLoggerOptions GetOptions() => m_Options.CurrentValue;
 
     public void Dispose() {
-        m_FilterOptionsReloadToken?.Dispose();
-        m_UnityOptionsReloadToken?.Dispose();
+        m_OptionsReloadToken?.Dispose();
         m_Loggers.Clear();
     }
 }

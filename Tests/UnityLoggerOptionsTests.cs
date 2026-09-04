@@ -1,62 +1,42 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 
 namespace Vecerdi.Extensions.Logging.Tests;
 
 [TestFixture]
 public sealed class UnityLoggerOptionsTests {
-    [Test]
-    public void ProcessCategoryName_TrimmingDisabled_ReturnsInput() {
-        var options = new UnityLoggerOptions { TrimNamespaces = false };
+    [TestCase(null, "My.Game.Audio.Mixer", "My.Game.Audio.Mixer")]
+    [TestCase(1, "My.Game.Audio.Mixer", "Mixer")]
+    [TestCase(2, "My.Game.Audio.Mixer", "Audio.Mixer")]
+    [TestCase(10, "My.Game.Audio.Mixer", "My.Game.Audio.Mixer")]
+    [TestCase(0, "My.Game.Audio.Mixer", "Mixer")]
+    [TestCase(-3, "My.Game.Audio.Mixer", "Mixer")]
+    [TestCase(1, "Mixer", "Mixer")]
+    [TestCase(1, "My.Game.", "My.Game.")]
+    [TestCase(1, "", "")]
+    public void FormatCategory_KeepsRequestedTrailingSegments(int? segments, string category, string expected) {
+        var options = new UnityLoggerOptions { CategorySegments = segments };
 
-        Assert.That(options.ProcessCategoryName("My.Game.Audio.Mixer"), Is.EqualTo("My.Game.Audio.Mixer"));
+        Assert.That(options.FormatCategory(category), Is.EqualTo(expected));
     }
 
     [Test]
-    public void ProcessCategoryName_KeepZeroSegments_ReturnsClassName() {
-        var options = new UnityLoggerOptions { TrimNamespaces = true, NamespaceSegmentsToKeep = 0 };
-
-        Assert.That(options.ProcessCategoryName("My.Game.Audio.Mixer"), Is.EqualTo("Mixer"));
+    public void CategoryName_PlainType_IsFullName() {
+        Assert.That(UnityLoggers.CategoryName(typeof(UnityLoggerOptions)), Is.EqualTo("Vecerdi.Extensions.Logging.UnityLoggerOptions"));
     }
 
     [Test]
-    public void ProcessCategoryName_KeepOneSegment_ReturnsLastNamespaceAndClass() {
-        var options = new UnityLoggerOptions { TrimNamespaces = true, NamespaceSegmentsToKeep = 1 };
-
-        Assert.That(options.ProcessCategoryName("My.Game.Audio.Mixer"), Is.EqualTo("Audio.Mixer"));
+    public void CategoryName_GenericType_DropsArityAndArguments() {
+        Assert.That(UnityLoggers.CategoryName(typeof(List<int>)), Is.EqualTo("System.Collections.Generic.List"));
+        Assert.That(UnityLoggers.CategoryName(typeof(Dictionary<,>)), Is.EqualTo("System.Collections.Generic.Dictionary"));
     }
 
     [Test]
-    public void ProcessCategoryName_KeepMoreSegmentsThanExist_ReturnsInput() {
-        var options = new UnityLoggerOptions { TrimNamespaces = true, NamespaceSegmentsToKeep = 10 };
-
-        Assert.That(options.ProcessCategoryName("My.Game.Audio.Mixer"), Is.EqualTo("My.Game.Audio.Mixer"));
+    public void CategoryName_NestedType_UsesDots() {
+        Assert.That(UnityLoggers.CategoryName(typeof(Outer.Inner)), Is.EqualTo("Vecerdi.Extensions.Logging.Tests.UnityLoggerOptionsTests.Outer.Inner"));
     }
 
-    [Test]
-    public void ProcessCategoryName_NegativeSegments_ReturnsInput() {
-        var options = new UnityLoggerOptions { TrimNamespaces = true, NamespaceSegmentsToKeep = -1 };
-
-        Assert.That(options.ProcessCategoryName("My.Game.Audio.Mixer"), Is.EqualTo("My.Game.Audio.Mixer"));
-    }
-
-    [Test]
-    public void ProcessCategoryName_NoNamespace_ReturnsInput() {
-        var options = new UnityLoggerOptions { TrimNamespaces = true, NamespaceSegmentsToKeep = 0 };
-
-        Assert.That(options.ProcessCategoryName("Mixer"), Is.EqualTo("Mixer"));
-    }
-
-    [Test]
-    public void ProcessCategoryName_TrailingDot_ReturnsInput() {
-        var options = new UnityLoggerOptions { TrimNamespaces = true, NamespaceSegmentsToKeep = 0 };
-
-        Assert.That(options.ProcessCategoryName("My.Game."), Is.EqualTo("My.Game."));
-    }
-
-    [Test]
-    public void ProcessCategoryName_GenericCategory_KeepsGenericSuffix() {
-        var options = new UnityLoggerOptions { TrimNamespaces = true, NamespaceSegmentsToKeep = 0 };
-
-        Assert.That(options.ProcessCategoryName("My.Game.Repository`1"), Is.EqualTo("Repository`1"));
+    private static class Outer {
+        internal sealed class Inner;
     }
 }
