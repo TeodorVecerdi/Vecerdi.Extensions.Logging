@@ -69,16 +69,33 @@ public sealed class UnityLoggerOutputTests {
     }
 
     [Test]
-    public void ErrorWithException_IsOneExceptionEntry_CarryingHeaderMessageAndExceptionText() {
-        LogAssert.Expect(LogType.Exception, new Regex(@"^\[Error, Mixer\] failed to load"));
+    public void ErrorWithException_IsOneExceptionEntry_WithTheExceptionsTraceInTheTracePane() {
+        LogAssert.Expect(LogType.Exception, new Regex(@"^LoggedException: \[Error, Mixer\] failed to load"));
+        Exception thrown;
+        try {
+            throw new InvalidOperationException("disk on fire");
+        } catch (InvalidOperationException e) {
+            thrown = e;
+        }
 
-        CreateLogger().LogError(new InvalidOperationException("disk on fire"), "failed to load");
+        CreateLogger().LogError(thrown, "failed to load");
 
         Assert.That(m_Entries, Has.Count.EqualTo(1), "exception logs must not split into two console entries");
         Assert.That(m_Entries[0].Type, Is.EqualTo(LogType.Exception));
-        Assert.That(m_Entries[0].Message, Does.StartWith("[Error, Mixer] failed to load"));
-        Assert.That(m_Entries[0].Message, Does.Contain("InvalidOperationException: disk on fire"));
-        Assert.That(m_Entries[0].StackTrace, Is.Empty, "the exception text carries its own trace; no call-site capture");
+        Assert.That(m_Entries[0].Message, Is.EqualTo("LoggedException: [Error, Mixer] failed to load\nSystem.InvalidOperationException: disk on fire"));
+        Assert.That(m_Entries[0].StackTrace, Does.Contain(nameof(ErrorWithException_IsOneExceptionEntry_WithTheExceptionsTraceInTheTracePane)), "the trace pane shows where the exception was thrown");
+    }
+
+    [Test]
+    public void ErrorWithNestedExceptions_RendersTheChainInnermostFirst() {
+        LogAssert.Expect(LogType.Exception, new Regex("wrapped"));
+        var inner = new TimeoutException("inner cause");
+        var outer = new InvalidOperationException("outer", inner);
+
+        CreateLogger().LogError(outer, "wrapped");
+
+        Assert.That(m_Entries[0].Message, Does.EndWith("System.InvalidOperationException: outer"));
+        Assert.That(m_Entries[0].StackTrace, Does.Contain("Rethrow as InvalidOperationException: outer"));
     }
 
     [Test]
@@ -178,6 +195,29 @@ public sealed class UnityLoggerOutputTests {
 
         Assert.That(m_Entries, Has.Count.EqualTo(1));
         Assert.That(m_Entries[0].Message, Does.EndWith("kept"));
+    }
+
+    [Test]
+    public void UnityLoggers_SurviveTheFactoryBeingDisposed_ByFallingBack() {
+        var logger = UnityLoggers.For("Test.Static.Disposed");
+        var factory = LoggerFactory.Create(builder => builder.AddUnityLogging(o => o.EnableColoredOutput = false));
+
+        try {
+            UnityLoggers.Initialize(factory);
+            logger.LogInformation("through the container");
+            factory.Dispose();
+
+            // The host disposed its container without calling Initialize(null) first (MediaVault does exactly
+            // this while play mode is exiting). Logging must not throw, and must land via the fallback.
+            Assert.DoesNotThrow(() => UnityLoggers.For("Test.Static.Disposed.Fresh").LogInformation("after dispose"));
+            Assert.DoesNotThrow(() => logger.LogWarning("after dispose, cached logger"));
+        } finally {
+            UnityLoggers.Initialize(null);
+        }
+
+        Assert.That(m_Entries, Has.Count.EqualTo(3));
+        Assert.That(m_Entries[1].Message, Does.EndWith("after dispose"));
+        Assert.That(m_Entries[2].Message, Does.EndWith("after dispose, cached logger"));
     }
 
     [Test]

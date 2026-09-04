@@ -31,14 +31,17 @@ internal sealed class UnityLogger(string categoryName, Func<UnityLoggerOptions> 
 
         var options = getOptions();
         var scopes = CollectScopes(options.IncludeScopes);
-        var text = BuildText(options, logLevel, formatter(state, exception), scopes.Text, exception);
 
         if (exception is not null && logLevel >= LogLevel.Error) {
-            // One entry, classified as an exception so crash reporting and console filters treat it as one.
-            // The exception's own trace is in the text, so Unity's call-site capture would only add noise.
-            Debug.LogFormat(LogType.Exception, LogOption.NoStacktrace, scopes.Context, "{0}", text);
+            // One console entry, classified as an exception, whose stack-trace pane shows the exception's
+            // own trace (plus the call site). Unity only reads a trace from an Exception object, so the
+            // header and message travel inside a wrapper whose StackTrace is the original chain.
+            var header = BuildText(options, logLevel, formatter(state, exception), scopes.Text, exception: null);
+            Debug.LogException(new LoggedException(header, exception), scopes.Context);
             return;
         }
+
+        var text = BuildText(options, logLevel, formatter(state, exception), scopes.Text, exception);
 
         var logType = logLevel switch {
             LogLevel.Warning => LogType.Warning,
@@ -128,6 +131,43 @@ internal sealed class UnityLogger(string categoryName, Func<UnityLoggerOptions> 
             if (m_Builder.Length > 0) m_Builder.Append(' ');
             if (key is not null) m_Builder.Append(key).Append('=');
             m_Builder.Append(value ?? "<null>");
+        }
+    }
+
+    /// <summary>
+    /// What <c>Debug.LogException</c> receives for an error with an exception. Unity builds the entry from
+    /// the exception's type name, <see cref="Message"/> and <see cref="StackTrace"/>: the message carries
+    /// the formatted header plus the original exception's type and message, and the trace is the original
+    /// exception chain rendered the way Unity renders nested exceptions ("Rethrow as" lines between them).
+    /// </summary>
+    internal sealed class LoggedException(string header, Exception original) : Exception(BuildMessage(header, original)) {
+        public Exception Original { get; } = original;
+
+        public override string StackTrace => BuildTrace(Original);
+
+        private static string BuildMessage(string header, Exception original) => $"{header}\n{original.GetType().FullName}: {original.Message}";
+
+        private static string BuildTrace(Exception exception) {
+            // Innermost first, each outer exception introduced by a "Rethrow as" line, matching what Unity
+            // prints for an exception chain passed to Debug.LogException.
+            var chain = new List<Exception>();
+            for (var current = exception; current is not null; current = current.InnerException) {
+                chain.Add(current);
+            }
+
+            var builder = new StringBuilder();
+            for (var i = chain.Count - 1; i >= 0; i--) {
+                var current = chain[i];
+                if (i < chain.Count - 1) {
+                    builder.Append("Rethrow as ").Append(current.GetType().Name).Append(": ").Append(current.Message).Append('\n');
+                }
+
+                if (current.StackTrace is { Length: > 0 } trace) {
+                    builder.Append(trace).Append('\n');
+                }
+            }
+
+            return builder.ToString();
         }
     }
 

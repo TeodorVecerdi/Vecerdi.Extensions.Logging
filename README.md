@@ -9,9 +9,8 @@ log call, exceptions kept in one piece, and the logger's own frames hidden from 
 ```
 [Information, NavigationManager] Navigated to /movies/the-thing
 [Warning, AssetManager] [key=poster:1234] Load took 1.8s
-[Error, DatabaseContext] Migration V72 failed
+LoggedException: [Error, DatabaseContext] Migration V72 failed
 System.IO.IOException: The database is locked
-   at ...
 ```
 
 ## Features
@@ -28,7 +27,9 @@ System.IO.IOException: The database is locked
   `StackTraces` limits capture to warnings and errors, errors only, or nothing, per provider, without
   touching the project-wide setting.
 - **Exceptions in one entry.** An error with an exception is a single console entry classified as an
-  exception, carrying the header, the message, and the exception's own text and trace.
+  exception. The entry text is the header, your message, and the exception's type and message; the
+  console's stack-trace pane shows the exception's own trace (nested exceptions included) followed by
+  the call site, so click-through and Console Pro parsing work as they do for a thrown exception.
 - **Console context.** Push a `UnityEngine.Object` as a scope and the entries logged inside it are
   linked to it, so clicking the entry selects the object.
 - **Readable output.** Level-coloured header in the editor (plain text in players), category names
@@ -210,7 +211,7 @@ configuration override is the natural place for that.
 |-----------------------------------|----------------------------------------------------------------------------------------------|
 | Trace, Debug, Information         | `Log`                                                                                        |
 | Warning                           | `Warning`, with the exception text appended when one is attached                             |
-| Error, Critical                   | `Error`; with an exception attached, a single `Exception` entry that includes its text       |
+| Error, Critical                   | `Error`; with an exception attached, a single `Exception` entry whose trace pane is the exception's |
 
 ## License
 
