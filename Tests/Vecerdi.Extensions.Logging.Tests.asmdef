@@ -15,7 +15,10 @@
     "precompiledReferences": [
         "nunit.framework.dll",
         "Microsoft.Extensions.Logging.Abstractions.dll",
-        "Microsoft.Extensions.Logging.dll"
+        "Microsoft.Extensions.Logging.dll",
+        "Microsoft.Extensions.Configuration.Abstractions.dll",
+        "Microsoft.Extensions.Configuration.dll",
+        "Microsoft.Extensions.Logging.Configuration.dll"
     ],
     "autoReferenced": false,
     "defineConstraints": [
