@@ -9,7 +9,8 @@ namespace Vecerdi.Extensions.Logging;
 /// that runs before the container is built. Until <see cref="Initialize"/> hands over an
 /// <see cref="ILoggerFactory"/>, loggers come from a built-in factory (Unity console, Information and
 /// above); afterwards every logger obtained here, including ones already stored in static fields,
-/// forwards to the provided factory.
+/// forwards to the provided factory. If that factory is disposed before <see cref="Initialize"/> is
+/// called with <c>null</c>, the loggers fall back on their own.
 /// </summary>
 public static class UnityLoggers {
     private static readonly ConcurrentDictionary<string, ForwardingLogger> s_Loggers = new();
@@ -47,7 +48,21 @@ public static class UnityLoggers {
         return name.Replace('+', '.');
     }
 
-    private static ILogger Resolve(string categoryName) => (s_Factory ?? s_Fallback.Value).CreateLogger(categoryName);
+    private static ILogger Resolve(string categoryName) {
+        if (s_Factory is { } factory) {
+            try {
+                return factory.CreateLogger(categoryName);
+            } catch (ObjectDisposedException) {
+                // The host tore its container down without telling us (or before it could). Behave as if
+                // Initialize(null) had been called so every logger drops back to the fallback.
+                if (ReferenceEquals(s_Factory, factory)) {
+                    Initialize(null);
+                }
+            }
+        }
+
+        return s_Fallback.Value.CreateLogger(categoryName);
+    }
 
     /// <summary>Re-resolves its target whenever <see cref="Initialize"/> has been called since it last looked.</summary>
     private sealed class ForwardingLogger(string categoryName) : ILogger {
@@ -59,7 +74,7 @@ public static class UnityLoggers {
                 var generation = Volatile.Read(ref s_Generation);
                 if (m_Target is null || m_TargetGeneration != generation) {
                     m_Target = Resolve(categoryName);
-                    m_TargetGeneration = generation;
+                    m_TargetGeneration = Volatile.Read(ref s_Generation);
                 }
 
                 return m_Target;
